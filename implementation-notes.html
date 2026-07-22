@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Implementation Notes — pi-codex-ws-compaction</title>
+</head>
+<body>
+  <main>
+    <h1>Implementation Notes</h1>
+    <p>This file records implementation-relevant decisions that were not fully determined before live integration.</p>
+
+    <article>
+      <h2>Effective authorization headers override the resolved API key</h2>
+      <p><strong>Provenance:</strong> agent-resolved</p>
+      <p>Pi can provide an effective <code>Authorization</code> header alongside an <code>apiKey</code> value. Header names are case-insensitive, but plain JavaScript objects are not. The first live compaction test therefore sent both <code>authorization</code> and <code>Authorization</code>; the gateway selected the placeholder credential and returned HTTP 401.</p>
+      <p>The compaction client now merges headers case-insensitively, allowing Pi's later effective provider header to replace the generated bearer header. An offline regression assertion verifies there is exactly one authorization header, and the live compaction suite verifies the corrected request.</p>
+    </article>
+
+    <article>
+      <h2>No silent HTTP continuation for normal target-model turns</h2>
+      <p><strong>Provenance:</strong> agent-resolved</p>
+      <p>Normal configured-model turns fail visibly when WebSocket connection or delivery fails. This avoids silently switching to HTTP <code>previous_response_id</code>, whose continuity was disproved on the target gateway. Pi-internal summarization calls are the sole exception: they have no session id and use full-input HTTP without <code>previous_response_id</code>.</p>
+    </article>
+
+    <article>
+      <h2>Configuration is snapshotted at extension load</h2>
+      <p><strong>Provenance:</strong> agent-resolved</p>
+      <p>The provider override, model allowlist, and WebSocket endpoint are treated as one runtime configuration. Reading the file independently inside request hooks could mix old and new values during an edit, while changing the provider cannot safely re-register the extension mid-request. The extension therefore validates and captures one configuration at load time; changes take effect through Pi <code>/reload</code>. Setting <code>enabled: false</code> before reload causes the extension to register nothing.</p>
+    </article>
+
+    <article>
+      <h2>Continuation offsets use resolved context-message counts</h2>
+      <p><strong>Provenance:</strong> agent-resolved</p>
+      <p>Pi session entries and model-visible context messages are not guaranteed to have a one-to-one relationship. WebSocket incremental continuation therefore records offsets using <code>sessionEntryToContextMessages</code> over the compaction-aware context entries rather than counting raw branch message entries. This prevents a future context-expanding entry from shifting the slice and duplicating or dropping input.</p>
+    </article>
+
+    <article>
+      <h2>Remote artifacts seed WebSocket continuity once</h2>
+      <p><strong>Provenance:</strong> agent-resolved</p>
+      <p>After compaction, the first compatible request replays the opaque v2 artifact and retained history. Once that request completes, later requests on the same socket use its <code>previous_response_id</code> and send only new context messages. Replaying the full artifact history on every turn would defeat WebSocket continuity and allow explicit history to grow without bound.</p>
+      <p>Legacy v1 artifacts are intentionally not parsed or replayed because the target gateway does not support the legacy endpoint and this repository is scoped to v2 only.</p>
+    </article>
+  </main>
+</body>
+</html>
