@@ -96,10 +96,7 @@ export type OpenAIWebSocketEvent =
 export type ContentPart =
   | { type: "input_text"; text: string }
   | { type: "output_text"; text: string }
-  | {
-      type: "input_image";
-      source: { type: "url"; url: string } | { type: "base64"; media_type: string; data: string };
-    };
+  | { type: "input_image"; image_url: string };
 
 export type InputItem =
   | {

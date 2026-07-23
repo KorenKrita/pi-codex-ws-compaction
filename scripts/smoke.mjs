@@ -162,6 +162,70 @@ try {
   assert.equal(reconstructed.modelKey, modelKey);
   assert.match(JSON.stringify(reconstructed.explicitHistory), /OPAQUE|after|reply/);
 
+  const toolImageItems = wsModule.convertMessagesToInputItemsForReplay(
+    [
+      {
+        role: "toolResult",
+        toolCallId: "call-read",
+        content: [
+          { type: "text", text: "Read image file [image/png]" },
+          { type: "image", mimeType: "image/png", data: "iVBORw0KGgo=" },
+        ],
+      },
+    ],
+    { input: ["text", "image"] },
+  );
+  assert.deepEqual(toolImageItems, [
+    {
+      type: "function_call_output",
+      call_id: "call-read",
+      output: "Read image file [image/png]",
+    },
+    {
+      type: "message",
+      role: "user",
+      content: [
+        { type: "input_text", text: "Attached image(s) from tool result:" },
+        { type: "input_image", image_url: "data:image/png;base64,iVBORw0KGgo=" },
+      ],
+    },
+  ]);
+
+  const normalizedImageItems = wsModule.convertMessagesToInputItemsForReplay(
+    [
+      {
+        role: "user",
+        content: [
+          { type: "input_image", image_url: "https://example.test/direct.png" },
+          { type: "input_image", source: { type: "url", url: "https://example.test/source.png" } },
+          {
+            type: "input_image",
+            source: { type: "base64", media_type: "image/webp", data: "UklGRg==" },
+          },
+        ],
+      },
+    ],
+    { input: ["text", "image"] },
+  );
+  assert.deepEqual(normalizedImageItems, [
+    {
+      type: "message",
+      role: "user",
+      content: [
+        { type: "input_image", image_url: "https://example.test/direct.png" },
+        { type: "input_image", image_url: "https://example.test/source.png" },
+        { type: "input_image", image_url: "data:image/webp;base64,UklGRg==" },
+      ],
+    },
+  ]);
+  assert.deepEqual(
+    wsModule.convertMessagesToInputItemsForReplay(
+      [{ role: "user", content: [{ type: "image", mimeType: "image/png", data: "iVBORw0KGgo=" }] }],
+      { input: ["text"] },
+    ),
+    [],
+  );
+
   const incremental = wsModule.selectInputItemsForContinuation({
     context: {
       messages: [

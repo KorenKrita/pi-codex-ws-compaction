@@ -308,6 +308,7 @@ function contentToOpenAIParts(content: unknown, modelOverride?: ReplayModelInfo)
     text?: string;
     data?: string;
     mimeType?: string;
+    image_url?: string;
     source?: unknown;
   }>) {
     if (
@@ -321,25 +322,34 @@ function contentToOpenAIParts(content: unknown, modelOverride?: ReplayModelInfo)
     if (part.type === "image" && typeof part.data === "string") {
       parts.push({
         type: "input_image",
-        source: {
-          type: "base64",
-          media_type: part.mimeType ?? "image/jpeg",
-          data: part.data,
-        },
+        image_url: `data:${part.mimeType ?? "image/jpeg"};base64,${part.data}`,
       });
       continue;
     }
+    if (part.type !== "input_image") continue;
+    if (typeof part.image_url === "string") {
+      parts.push({ type: "input_image", image_url: part.image_url });
+      continue;
+    }
+    if (!part.source || typeof part.source !== "object") continue;
+    const source = part.source as {
+      type?: unknown;
+      url?: unknown;
+      media_type?: unknown;
+      data?: unknown;
+    };
+    if (source.type === "url" && typeof source.url === "string") {
+      parts.push({ type: "input_image", image_url: source.url });
+      continue;
+    }
     if (
-      part.type === "input_image" &&
-      part.source &&
-      typeof part.source === "object" &&
-      typeof (part.source as { type?: unknown }).type === "string"
+      source.type === "base64" &&
+      typeof source.media_type === "string" &&
+      typeof source.data === "string"
     ) {
       parts.push({
         type: "input_image",
-        source: part.source as
-          | { type: "url"; url: string }
-          | { type: "base64"; media_type: string; data: string },
+        image_url: `data:${source.media_type};base64,${source.data}`,
       });
     }
   }
@@ -382,7 +392,10 @@ function convertTools(tools: Context["tools"]): FunctionToolDefinition[] {
   }));
 }
 
-function convertMessagesToInputItems(messages: Message[], modelOverride?: ReplayModelInfo): InputItem[] {
+export function convertMessagesToInputItemsForReplay(
+  messages: Message[],
+  modelOverride?: ReplayModelInfo,
+): InputItem[] {
   const items: InputItem[] = [];
 
   for (const msg of messages) {
@@ -614,7 +627,7 @@ export function selectInputItemsForContinuation(params: {
   if (previousResponseId && session.lastContextLength > 0) {
     const newMessages = context.messages.slice(session.lastContextLength);
     if (newMessages.length > 0) {
-      return convertMessagesToInputItems(newMessages, model);
+      return convertMessagesToInputItemsForReplay(newMessages, model);
     }
   }
 
@@ -717,7 +730,7 @@ async function runWarmUp(params: {
 }
 
 function buildFullInput(context: Context, model: ReplayModelInfo): InputItem[] {
-  return convertMessagesToInputItems(context.messages, model);
+  return convertMessagesToInputItemsForReplay(context.messages, model);
 }
 
 async function fallbackToHttp(
